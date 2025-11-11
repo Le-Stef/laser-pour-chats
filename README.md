@@ -4,7 +4,7 @@ Un projet Web simple et amusant créé spécialement pour divertir les félins !
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=flat&logo=html5&logoColor=white)](https://fr.wikipedia.org/wiki/Hypertext_Markup_Language)
-[![JavaScript](https://img.shields.io/badge/JavaScript-323330?style=flat&logo=javascript&logoColor=F7DF1E)(https://fr.wikipedia.org/wiki/JavaScript)
+[![JavaScript](https://img.shields.io/badge/JavaScript-323330?style=flat&logo=javascript&logoColor=F7DF1E)](https://fr.wikipedia.org/wiki/JavaScript)
 [![CSS](https://img.shields.io/badge/CSS-563d7c?&style=flat&logo=css3&logoColor=white)](https://fr.wikipedia.org/wiki/Feuilles_de_style_en_cascade)
 
 ## Description
