@@ -1,0 +1,920 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Laser pour Chats</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background: #000;
+            cursor: none;
+            font-family: Arial, sans-serif;
+        }
+
+        #laser {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: auto;
+            background: radial-gradient(circle at center,
+                    rgba(255, 0, 0, 1) 0%,
+                    rgba(255, 0, 0, 0.8) 20%,
+                    rgba(255, 0, 0, 0.4) 40%,
+                    rgba(255, 0, 0, 0) 70%);
+            transform: translate(-50%, -50%);
+        }
+
+        #controlPanel {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(40, 40, 40, 0.9);
+            border: 2px solid #666;
+            border-radius: 10px;
+            padding: 15px;
+            color: white;
+            pointer-events: auto;
+            cursor: auto;
+            z-index: 1000;
+            display: none;
+        }
+
+        #controlPanel h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            color: #ff6666;
+        }
+
+        .figureButton {
+            display: block;
+            width: 100%;
+            margin: 5px 0;
+            padding: 8px 12px;
+            background: #555;
+            border: 1px solid #777;
+            border-radius: 5px;
+            color: white;
+            cursor: pointer;
+            font-size: 12px;
+            transition: background 0.2s;
+        }
+
+        .figureButton:hover {
+            background: #666;
+        }
+
+        .figureButton:active {
+            background: #777;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="laser"></div>
+
+    <!-- Audio préchargé pour un déclenchement instantané -->
+    <audio id="catchSound" preload="auto">
+        <source src="ni.mp3" type="audio/mpeg">
+    </audio>
+
+    <div id="controlPanel">
+        <h3>Test des Figures</h3>
+        <button class="figureButton" onclick="testFigure('triangle')">Triangle</button>
+        <button class="figureButton" onclick="testFigure('quadrilateral')">Quadrilatère</button>
+        <button class="figureButton" onclick="testFigure('square')">Carré</button>
+        <button class="figureButton" onclick="testFigure('oval')">Ovale</button>
+        <button class="figureButton" onclick="testFigure('clover')">Trèfle</button>
+        <button class="figureButton" onclick="testFigure('apple')">Pomme</button>
+        <button class="figureButton" onclick="testFigure('heart')">Cœur</button>
+        <button class="figureButton" onclick="testFigure('infinity')">∞</button>
+        <button class="figureButton" onclick="testFigure('spiral')">Spirale</button>
+    </div>
+
+    <script>
+        const config = {
+            laserSize: 48,
+            baseSpeed: 7,
+            globalSpeedMultiplier: .4,  // Multiplicateur global de vitesse (pour debug/ajustement)
+            // Paramètres pour les figures spéciales
+            minFigureTime: 5,      // Temps minimum en secondes avant une figure
+            maxFigureTime: 15,     // Temps maximum en secondes avant une figure
+            minFigureDrawing: 3,   // Nombre minimum de tracés de la figure
+            maxFigureDrawing: 6,   // Nombre maximum de tracés de la figure
+            minFigureSpeed: 1.2,   // Multiplicateur de vitesse minimum pour les figures
+            maxFigureSpeed: 2.5,   // Multiplicateur de vitesse maximum pour les figures
+            // Paramètres de taille des figures
+            minFigureSize: 0.20,   // Taille minimum (ratio de la plus petite dimension d'écran)
+            maxFigureSize: 0.45,   // Taille maximum (ratio de la plus petite dimension d'écran)
+            // Zone de confinement pour la génération aléatoire des points
+            randomPointRadius: 0.7, // Ratio de la taille de figure dans lequel les points peuvent varier
+            // Mode de test et interface
+            testMode: false,        // true = mode test manuel, false = mode automatique
+            showControlPanel: false // true = afficher le panneau, false = masquer
+        };
+
+        const laser = document.getElementById('laser');
+        laser.style.width = config.laserSize + 'px';
+        laser.style.height = config.laserSize + 'px';
+
+        let time = Math.random() * 1000;
+        let phase = Math.random() * 1000;
+        let centerX = window.innerWidth / 2;
+        let centerY = window.innerHeight / 2;
+
+        // Variables pour la gestion des modes
+        let mode = 'cruise';  // 'cruise' ou 'figure'
+        let nextFigureTime = Date.now() + (config.minFigureTime + Math.random() * (config.maxFigureTime - config.minFigureTime)) * 1000;
+        let currentFigure = null;
+        let figureProgress = 0;
+        let figureDrawCount = 0;
+        let totalFigureDraws = 0;
+        let figureStartPos = { x: 0, y: 0 };
+        let currentFigureSpeed = 0;
+        let currentFigureSize = 0;
+        let currentFigureRotation = 0;
+        let currentFigurePoints = [];
+        let currentFigureResult = null;
+        let currentDirection = 0;
+        let currentFigureSpeedMultiplier = 1;
+
+        // Liste des figures disponibles
+        const figures = ['triangle', 'quadrilateral', 'square', 'oval', 'clover', 'apple', 'heart', 'infinity', 'spiral'];
+
+        // Fonction pour le laser principal (avec son)
+        function mirrorPosition(pos, max) {
+            const originalPos = pos;
+            
+            while (pos < 0 || pos > max) {
+                if (pos < 0) {
+                    pos = -pos;
+                }
+                if (pos > max) {
+                    pos = max - (pos - max);
+                }
+            }
+
+            return pos;
+        }
+
+        // Fonction pour les figures (sans son)
+        function mirrorPositionSilent(pos, max) {
+            while (pos < 0 || pos > max) {
+                if (pos < 0) {
+                    pos = -pos;
+                }
+                if (pos > max) {
+                    pos = max - (pos - max);
+                }
+            }
+            return pos;
+        }
+
+        // Fonction pour appliquer une rotation à un point autour d'un centre
+        function rotatePoint(point, centerX, centerY, angle) {
+            const cos = Math.cos(angle);
+            const sin = Math.sin(angle);
+            const dx = point.x - centerX;
+            const dy = point.y - centerY;
+            return {
+                x: centerX + dx * cos - dy * sin,
+                y: centerY + dx * sin + dy * cos
+            };
+        }
+
+        // === FIGURE MANAGER ===
+        // Gestionnaire de figures qui garantit la continuité Point A → Point B
+
+        class FigureManager {
+            // Génère une figure qui commence EXACTEMENT au point A et retourne le point B final
+            static generateFigure(figureType, pointA, size, rotation, direction = 0) {
+                switch (figureType) {
+                    case 'triangle':
+                        return this.generateTriangleFromPointA(pointA, size, rotation, direction);
+                    case 'quadrilateral':
+                        return this.generateQuadrilateralFromPointA(pointA, size, rotation, direction);
+                    case 'square':
+                        return this.generateSquareFromPointA(pointA, size, rotation, direction);
+                    case 'oval':
+                        return this.generateOvalFromPointA(pointA, size, rotation, direction);
+                    case 'clover':
+                        return this.generateCloverFromPointA(pointA, size, rotation, direction);
+                    case 'apple':
+                        return this.generateAppleFromPointA(pointA, size, rotation, direction);
+                    case 'heart':
+                        return this.generateHeartFromPointA(pointA, size, rotation, direction);
+                    case 'infinity':
+                        return this.generateInfinityFromPointA(pointA, size, rotation, direction);
+                    case 'spiral':
+                        return this.generateSpiralFromPointA(pointA, size, rotation, direction);
+                    default:
+                        return { points: [pointA, pointA], endPoint: pointA };
+                }
+            }
+
+            // Triangle qui commence exactement au point A
+            static generateTriangleFromPointA(pointA, size, rotation, direction) {
+                const points = [pointA]; // Commence EXACTEMENT au point A
+
+                // Générer des angles internes décents : entre 30° et 120°
+                const minInternalAngle = Math.PI / 6;  // 30°
+                const maxInternalAngle = 2 * Math.PI / 3;  // 120°
+
+                // Premier angle depuis le point A
+                const angle1 = direction + rotation + (Math.random() - 0.5) * Math.PI * 0.4;
+                const radius1 = size * (0.5 + Math.random() * 0.7);
+
+                const pointB = {
+                    x: pointA.x + Math.cos(angle1) * radius1,
+                    y: pointA.y + Math.sin(angle1) * radius1
+                };
+                points.push(pointB);
+
+                // Deuxième angle : s'assurer qu'il y a un angle minimal entre les côtés
+                let angle2;
+                let attempts = 0;
+                do {
+                    angle2 = direction + rotation + (Math.random() - 0.5) * Math.PI * 0.8;
+                    attempts++;
+
+                    // Calculer l'angle entre les deux côtés du triangle
+                    const angleDiff = Math.abs(angle2 - angle1);
+                    const normalizedAngleDiff = Math.min(angleDiff, 2 * Math.PI - angleDiff);
+
+                    // Vérifier que l'angle est décent (entre 30° et 150°)
+                    if (normalizedAngleDiff >= minInternalAngle && normalizedAngleDiff <= (5 * Math.PI / 6)) {
+                        break;
+                    }
+                } while (attempts < 10);
+
+                const radius2 = size * (0.5 + Math.random() * 0.7);
+                const pointC = {
+                    x: pointA.x + Math.cos(angle2) * radius2,
+                    y: pointA.y + Math.sin(angle2) * radius2
+                };
+                points.push(pointC);
+
+                // Fermer le triangle en revenant au point A
+                points.push(pointA);
+
+                return {
+                    points: points,
+                    endPoint: pointA, // Le triangle revient au point de départ
+                    speedMultiplier: 1.0 // Vitesse de référence pour 4 points
+                };
+            }
+
+            // Quadrilatère qui commence exactement au point A
+            static generateQuadrilateralFromPointA(pointA, size, rotation, direction) {
+                const points = [pointA]; // Commence EXACTEMENT au point A
+
+                // Générer les 3 autres sommets
+                for (let i = 1; i < 4; i++) {
+                    const baseAngle = direction + (i * 2 * Math.PI / 4);
+                    const randomRadius = size * (0.4 + Math.random() * config.randomPointRadius);
+                    const randomAngleOffset = (Math.random() - 0.5) * Math.PI * 0.25;
+
+                    const angle = baseAngle + randomAngleOffset + rotation;
+                    const point = {
+                        x: pointA.x + Math.cos(angle) * randomRadius,
+                        y: pointA.y + Math.sin(angle) * randomRadius
+                    };
+
+                    points.push(point);
+                }
+
+                // Fermer le quadrilatère en revenant au point A
+                points.push(pointA);
+
+                return {
+                    points: points,
+                    endPoint: pointA, // Le quadrilatère revient au point de départ
+                    speedMultiplier: 1.0 // Vitesse de référence pour 5 points
+                };
+            }
+
+            // Carré parfait qui commence exactement au point A
+            static generateSquareFromPointA(pointA, size, rotation, direction) {
+                const points = [pointA]; // Commence EXACTEMENT au point A
+
+                // Générer un carré parfait en partant du point A
+                // Point A sera un coin du carré
+                const sideLength = size;
+
+                // Utiliser SEULEMENT la rotation, pas la direction (qui varie)
+                // Premier côté : angle de base + rotation
+                const baseAngle = rotation; // Angle fixe pour un carré géométrique parfait
+
+                const point1 = {
+                    x: pointA.x + Math.cos(baseAngle) * sideLength,
+                    y: pointA.y + Math.sin(baseAngle) * sideLength
+                };
+                points.push(point1);
+
+                // Deuxième côté : exactement +90° par rapport au premier
+                const angle2 = baseAngle + Math.PI / 2;
+                const point2 = {
+                    x: point1.x + Math.cos(angle2) * sideLength,
+                    y: point1.y + Math.sin(angle2) * sideLength
+                };
+                points.push(point2);
+
+                // Troisième côté : exactement +90° par rapport au deuxième
+                const angle3 = baseAngle + Math.PI;
+                const point3 = {
+                    x: point2.x + Math.cos(angle3) * sideLength,
+                    y: point2.y + Math.sin(angle3) * sideLength
+                };
+                points.push(point3);
+
+                // Fermer le carré en revenant au point A
+                points.push(pointA);
+
+                return {
+                    points: points,
+                    endPoint: pointA, // Le carré revient au point de départ
+                    speedMultiplier: 1.0 // Vitesse de référence pour 5 points
+                };
+            }
+
+            // Ovale avec deux axes variables qui commence exactement au point A
+            static generateOvalFromPointA(pointA, size, rotation, direction) {
+                // Générer des axes aléatoires pour l'ovale
+                const axisRatio = 0.7 + Math.random() * 0.8;
+                const radiusX = size;
+                const radiusY = size * axisRatio;
+
+                // Nombre de points pour tracer l'ovale
+                const numPoints = 36;
+
+                // ÉTAPE 1: Générer l'ovale centré sur (0,0) avec la rotation
+                const ovalPoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                for (let i = 0; i <= numPoints; i++) {
+                    const angle = (i * 2 * Math.PI / numPoints);
+
+                    // Point sur l'ellipse non-rotée
+                    const x = Math.cos(angle) * radiusX;
+                    const y = Math.sin(angle) * radiusY;
+
+                    // Appliquer la rotation
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    ovalPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = ovalPoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < ovalPoints.length; i++) {
+                    const point = ovalPoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que l'ovale se ferme parfaitement au point A
+                // Le dernier point doit être exactement le même que le premier
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // L'ovale se ferme au point de départ
+                    speedMultiplier: .6 // Vitesse accélérée pour 37 points (37/4 ≈ 9)
+                };
+            }
+
+            // Trèfle de Habenicht avec 3 ou 4 pétales qui commence exactement au point A
+            static generateCloverFromPointA(pointA, size, rotation, direction) {
+                // Choisir aléatoirement entre 3 et 4 pétales
+                const petals = Math.random() < 0.5 ? 3 : 4;
+
+                // Paramètre de taille des pétales
+                const petalSize = size * 0.8;
+
+                // Nombre de points pour tracer le trèfle (plus de points = plus lisse)
+                const numPoints = 48;
+
+                // ÉTAPE 1: Générer le trèfle centré sur (0,0) avec la rotation
+                const cloverPoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                for (let i = 0; i <= numPoints; i++) {
+                    const t = (i * 2 * Math.PI / numPoints);
+
+                    // Équation polaire corrigée du trèfle: r = a * |sin(n*θ)|
+                    // Pour 3 pétales: r = a * |sin(3*θ)|
+                    // Pour 4 pétales: r = a * |sin(2*θ)|
+                    let r;
+                    if (petals === 3) {
+                        r = petalSize * Math.abs(Math.sin(3 * t));
+                    } else {
+                        r = petalSize * Math.abs(Math.sin(2 * t));
+                    }
+
+                    // Conversion polaire → cartésien
+                    const x = r * Math.cos(t);
+                    const y = r * Math.sin(t);
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    cloverPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = cloverPoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < cloverPoints.length; i++) {
+                    const point = cloverPoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que le trèfle se ferme parfaitement au point A
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // Le trèfle se ferme au point de départ
+                    speedMultiplier: .2 // Vitesse très accélérée pour 49 points (49/4 ≈ 12)
+                };
+            }
+
+            // Cœur d'Eugène Beutel qui commence exactement au point A
+            static generateAppleFromPointA(pointA, size, rotation, direction) {
+                // Paramètre de taille du cœur
+                const appleSize = size * 0.8;
+
+                // Nombre de points pour tracer le cœur (plus de points = plus lisse)
+                const numPoints = 40;
+
+                // ÉTAPE 1: Générer le cœur centré sur (0,0) avec la rotation
+                const applePoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                for (let i = 0; i <= numPoints; i++) {
+                    const t = (i * 2 * Math.PI / numPoints);
+
+                    // Équation polaire du cœur: r = a * (1 - cos(θ))
+                    // Version cardioid classique
+                    const r = appleSize * (1 - Math.cos(t));
+
+                    // Conversion polaire → cartésien
+                    const x = r * Math.cos(t);
+                    const y = r * Math.sin(t);
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    applePoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = applePoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < applePoints.length; i++) {
+                    const point = applePoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que le cœur se ferme parfaitement au point A
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // La pomme se ferme au point de départ
+                    speedMultiplier: 0.6 // Vitesse accélérée pour 41 points
+                };
+            }
+
+            // Cœur de Raphaël Laporte qui commence exactement au point A
+            static generateHeartFromPointA(pointA, size, rotation, direction) {
+                // Paramètre de taille du cœur
+                const heartSize = size * 0.6;
+
+                // Nombre de points pour tracer le cœur (plus de points = plus lisse)
+                const numPoints = 50;
+
+                // ÉTAPE 1: Générer le cœur centré sur (0,0) avec la rotation
+                const heartPoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                for (let i = 0; i <= numPoints; i++) {
+                    const t = (i * 2 * Math.PI / numPoints);
+
+                    // Équation paramétrique du Cœur de Raphaël Laporte:
+                    // x = sin³(t)
+                    // y = cos(t) - cos⁴(t)
+                    const sin_t = Math.sin(t);
+                    const cos_t = Math.cos(t);
+
+                    const x = heartSize * Math.pow(sin_t, 3);
+                    const y = heartSize * (cos_t - Math.pow(cos_t, 4));
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    heartPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = heartPoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < heartPoints.length; i++) {
+                    const point = heartPoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que le cœur se ferme parfaitement au point A
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // Le cœur se ferme au point de départ
+                    speedMultiplier: 0.8 // Vitesse accélérée pour 51 points
+                };
+            }
+
+            // Lemniscate de Bernoulli (∞) qui commence exactement au point A
+            static generateInfinityFromPointA(pointA, size, rotation, direction) {
+                // Paramètre de taille du lemniscate
+                const infinitySize = size * 0.7;
+
+                // Nombre de points pour tracer le lemniscate (plus de points = plus lisse)
+                const numPoints = 60;
+
+                // ÉTAPE 1: Générer le lemniscate centré sur (0,0) avec la rotation
+                const infinityPoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                for (let i = 0; i <= numPoints; i++) {
+                    const t = (i * 2 * Math.PI / numPoints);
+
+                    // Équation paramétrique du Lemniscate de Bernoulli:
+                    // x = a * cos(t) / (1 + sin²(t))
+                    // y = a * sin(t) * cos(t) / (1 + sin²(t))
+                    const sin_t = Math.sin(t);
+                    const cos_t = Math.cos(t);
+                    const denominator = 1 + sin_t * sin_t;
+
+                    const x = infinitySize * cos_t / denominator;
+                    const y = infinitySize * sin_t * cos_t / denominator;
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    infinityPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = infinityPoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < infinityPoints.length; i++) {
+                    const point = infinityPoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que le lemniscate se ferme parfaitement au point A
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // Le lemniscate se ferme au point de départ
+                    speedMultiplier: 0.5 // Vitesse accélérée pour 61 points
+                };
+            }
+
+            // Spirale d'Archimède aller-retour qui commence exactement au point A
+            static generateSpiralFromPointA(pointA, size, rotation, direction) {
+                // Paramètres de la spirale
+                const spiralSize = size * 0.8;
+                const turns = 3; // Nombre de tours de spirale
+                const numPointsOut = 80; // Points pour l'aller (spirale qui s'ouvre)
+                const numPointsBack = 80; // Points pour le retour (spirale qui se ferme)
+
+                // ÉTAPE 1: Générer la spirale centrée sur (0,0) avec la rotation
+                const spiralPoints = [];
+                const cosRot = Math.cos(rotation);
+                const sinRot = Math.sin(rotation);
+
+                // Partie 1: Spirale qui s'ouvre (du centre vers l'extérieur)
+                for (let i = 0; i <= numPointsOut; i++) {
+                    const t = (i / numPointsOut) * turns * 2 * Math.PI;
+                    const r = spiralSize * (i / numPointsOut); // Rayon croissant
+
+                    // Équation polaire de la spirale d'Archimède: r = a * θ
+                    const x = r * Math.cos(t);
+                    const y = r * Math.sin(t);
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    spiralPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // Partie 2: Spirale qui se ferme (de l'extérieur vers le centre)
+                // Continuer depuis le dernier point de la spirale d'ouverture
+                for (let i = 1; i < numPointsBack; i++) {
+                    // Continuer le tracé en sens inverse depuis le point le plus extérieur
+                    const t = turns * 2 * Math.PI - (i / numPointsBack) * turns * 2 * Math.PI;
+                    const r = spiralSize * (1 - i / numPointsBack); // Rayon décroissant
+
+                    // Pas de décalage π - continuer directement depuis la position courante
+                    const x = r * Math.cos(t);
+                    const y = r * Math.sin(t);
+
+                    // Appliquer la rotation globale
+                    const rotatedX = x * cosRot - y * sinRot;
+                    const rotatedY = x * sinRot + y * cosRot;
+
+                    spiralPoints.push({ x: rotatedX, y: rotatedY });
+                }
+
+                // ÉTAPE 2: Prendre le premier point comme référence et calculer la translation
+                const referencePoint = spiralPoints[0];
+                const translateX = pointA.x - referencePoint.x;
+                const translateY = pointA.y - referencePoint.y;
+
+                // ÉTAPE 3: Appliquer la translation à tous les points
+                const points = [];
+
+                for (let i = 0; i < spiralPoints.length; i++) {
+                    const point = spiralPoints[i];
+                    points.push({
+                        x: point.x + translateX,
+                        y: point.y + translateY
+                    });
+                }
+
+                // ÉTAPE 4: S'assurer que la spirale se ferme parfaitement au point A
+                points[points.length - 1] = { x: pointA.x, y: pointA.y };
+
+                return {
+                    points: points,
+                    endPoint: points[0], // La spirale se ferme au point de départ
+                    speedMultiplier: 0.2 // Vitesse accélérée pour ~80 points
+                };
+            }
+        }
+
+        // Fonction pour interpoler entre deux points
+        function lerp(start, end, t) {
+            return {
+                x: start.x + (end.x - start.x) * t,
+                y: start.y + (end.y - start.y) * t
+            };
+        }
+
+        // Fonction pour calculer la position dans une figure
+        function getFigurePosition(figure, progress) {
+            if (currentFigurePoints.length > 0) {
+                // Calculer sur quel segment nous sommes et la position sur ce segment
+                const totalSegments = currentFigurePoints.length - 1;
+                const segmentLength = 1 / totalSegments;
+                const currentSegment = Math.floor(progress / segmentLength);
+                const segmentProgress = (progress % segmentLength) / segmentLength;
+
+                if (currentSegment >= totalSegments) {
+                    return currentFigurePoints[currentFigurePoints.length - 1];
+                }
+
+                return lerp(currentFigurePoints[currentSegment], currentFigurePoints[currentSegment + 1], segmentProgress);
+            }
+
+            return { x: figureStartPos.x, y: figureStartPos.y };
+        }
+
+        // Fonction pour calculer la direction actuelle du mouvement en mode croisière
+        function getCurrentCruiseDirection() {
+            // Approximation de la direction basée sur les variables time et phase
+            const dx = Math.cos(time) * 200 + Math.cos(time * 0.5) * 300 + Math.cos(time * 0.2) * 400;
+            const dy = -Math.sin(time * 0.7) * 150 - Math.sin(time * 0.3) * 250 - Math.sin(time * 0.4) * 200;
+            return Math.atan2(dy, dx);
+        }
+
+        function animate() {
+            const now = Date.now();
+            let x, y;
+
+            // Vérifier s'il est temps de commencer une figure (seulement en mode automatique)
+            if (mode === 'cruise' && !config.testMode && now >= nextFigureTime) {
+                mode = 'figure';
+                currentFigure = figures[Math.floor(Math.random() * figures.length)];
+                figureProgress = 0;
+                figureDrawCount = 0;
+                totalFigureDraws = config.minFigureDrawing + Math.floor(Math.random() * (config.maxFigureDrawing - config.minFigureDrawing + 1));
+
+                // Tirer au sort les paramètres de cette série de figures
+                currentFigureSpeed = config.minFigureSpeed + Math.random() * (config.maxFigureSpeed - config.minFigureSpeed);
+                currentFigureSize = Math.min(window.innerWidth, window.innerHeight) * (config.minFigureSize + Math.random() * (config.maxFigureSize - config.minFigureSize));
+                currentFigureRotation = Math.random() * 2 * Math.PI; // 0° à 360°
+
+                // POINT A = Position exacte actuelle du laser (depuis le mode croisière)
+                const currentPos = laser.getBoundingClientRect();
+                const pointA = {
+                    x: currentPos.left + currentPos.width / 2,
+                    y: currentPos.top + currentPos.height / 2
+                };
+
+                // Calculer la direction actuelle du mouvement pour continuité visuelle
+                currentDirection = getCurrentCruiseDirection();
+
+                // Générer UNE SEULE FOIS la figure via le FigureManager
+                currentFigureResult = FigureManager.generateFigure(
+                    currentFigure,
+                    pointA,
+                    currentFigureSize,
+                    currentFigureRotation,
+                    currentDirection
+                );
+
+                currentFigurePoints = currentFigureResult.points;
+                currentFigureSpeedMultiplier = currentFigureResult.speedMultiplier;
+
+                // Appliquer les limites d'écran aux points UNE SEULE FOIS (sans son)
+                for (let point of currentFigurePoints) {
+                    point.x = mirrorPositionSilent(point.x, window.innerWidth);
+                    point.y = mirrorPositionSilent(point.y, window.innerHeight);
+                }
+            }
+
+            if (mode === 'cruise') {
+                // Mode croisière
+                time += 0.002 * config.baseSpeed * config.globalSpeedMultiplier;
+                phase += 0.001 * config.globalSpeedMultiplier;
+
+                x = centerX +
+                    Math.sin(time) * 200 +
+                    Math.sin(time * 0.5) * 300 +
+                    Math.sin(time * 0.2) * 400;
+
+                y = centerY +
+                    Math.cos(time * 0.7) * 150 +
+                    Math.cos(time * 0.3) * 250 +
+                    Math.cos(time * 0.4) * 200;
+
+                let complexX = Math.sin(phase) * 150 * Math.sin(time * 1.5);
+                let complexY = Math.cos(phase) * 150 * Math.cos(time * 1.7);
+
+                let noiseX = Math.sin(time * 5) * 20 * Math.sin(phase * 2);
+                let noiseY = Math.cos(time * 4) * 20 * Math.cos(phase * 3);
+
+                x += complexX + noiseX;
+                y += complexY + noiseY;
+
+                x = mirrorPosition(x, window.innerWidth);
+                y = mirrorPosition(y, window.innerHeight);
+            } else if (mode === 'figure') {
+                // Mode figure
+                figureProgress += currentFigureSpeed * 0.01 * config.globalSpeedMultiplier * currentFigureSpeedMultiplier;
+
+                if (figureProgress >= 1) {
+                    figureProgress = 0;
+                    figureDrawCount++;
+
+                    if (figureDrawCount >= totalFigureDraws) {
+                        // Retour au mode croisière
+                        mode = 'cruise';
+                        nextFigureTime = now + (config.minFigureTime + Math.random() * (config.maxFigureTime - config.minFigureTime)) * 1000;
+
+                        // POINT B = Position finale de la figure (garantie par le FigureManager)
+                        x = currentFigureResult.endPoint.x;
+                        y = currentFigureResult.endPoint.y;
+                    } else {
+                        // Continuer avec la même figure
+                        const pos = getFigurePosition(currentFigure, figureProgress);
+                        x = pos.x;
+                        y = pos.y;
+                    }
+                } else {
+                    const pos = getFigurePosition(currentFigure, figureProgress);
+                    x = pos.x;
+                    y = pos.y;
+                }
+            }
+
+            laser.style.left = x + 'px';
+            laser.style.top = y + 'px';
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Gestion des sons
+        const catchSound = document.getElementById('catchSound');
+
+        function playCatchSound() {
+            try {
+                catchSound.currentTime = 0; // Remettre au début pour pouvoir rejouer rapidement
+                catchSound.play();
+            } catch (error) {
+            }
+        }
+
+        // Ajouter l'événement de clic sur le laser
+        laser.addEventListener('click', playCatchSound);
+        laser.addEventListener('touchstart', playCatchSound, { passive: true }); // Pour les tablettes tactiles
+
+        // Gestion de l'affichage du panneau de contrôle
+        if (config.showControlPanel) {
+            document.getElementById('controlPanel').style.display = 'block';
+        }
+
+        window.addEventListener('resize', () => {
+            centerX = window.innerWidth / 2;
+            centerY = window.innerHeight / 2;
+        });
+
+        // Fonction pour tester une figure spécifique
+        function testFigure(figureType) {
+            if (mode === 'cruise') {
+
+                mode = 'figure';
+                currentFigure = figureType;
+                figureProgress = 0;
+                figureDrawCount = 0;
+                totalFigureDraws = 5; // 5 répétitions en mode test
+
+                // Paramètres de test
+                currentFigureSpeed = config.minFigureSpeed + Math.random() * (config.maxFigureSpeed - config.minFigureSpeed);
+                currentFigureSize = Math.min(window.innerWidth, window.innerHeight) * (config.minFigureSize + Math.random() * (config.maxFigureSize - config.minFigureSize));
+                currentFigureRotation = Math.random() * 2 * Math.PI;
+
+                // POINT A = Position exacte actuelle du laser
+                const currentPos = laser.getBoundingClientRect();
+                const pointA = {
+                    x: currentPos.left + currentPos.width / 2,
+                    y: currentPos.top + currentPos.height / 2
+                };
+
+                // Calculer la direction actuelle
+                currentDirection = getCurrentCruiseDirection();
+
+                // Générer la figure via le FigureManager
+                currentFigureResult = FigureManager.generateFigure(
+                    currentFigure,
+                    pointA,
+                    currentFigureSize,
+                    currentFigureRotation,
+                    currentDirection
+                );
+
+                currentFigurePoints = currentFigureResult.points;
+                currentFigureSpeedMultiplier = currentFigureResult.speedMultiplier;
+            }
+        }
+    </script>
+</body>
+
+</html>
