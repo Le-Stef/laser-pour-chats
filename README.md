@@ -28,8 +28,11 @@ Lorsqu'ils "attrapent" le laser, un son se déclenche.
 
 ## Installation
 
-1. Téléchargez index.html ou clonez ce repository
-2. Ouvrez le fichier `index.html` dans votre navigateur web
+Le plus simple est d'accéder directement à [index.html](https://le-stef.github.io/laser-pour-chats/).
+
+Sinon :
+1. Téléchargez index.html ou clonez ce repository 
+2. Ouvrez le fichier [index.html](https://le-stef.github.io/laser-pour-chats/) dans votre navigateur web
 3. Laissez votre chat jouer avec le laser !
 
 ## Utilisation
